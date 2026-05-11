@@ -1,0 +1,44 @@
+# Data
+dataset/dataset_100/
+dataset/rp2k_dataset/
+dataset/meta.csv
+archive.zip
+dataset.zip
+
+# repots
+reports/
+
+# Outputs
+checkpoints/
+results/
+wandb/
+lightning_logs/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Env
+.env
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/

@@ -1,0 +1,27 @@
+# MI-JEPA model configuration
+model:
+  name: "vit_small_patch16_224"
+  embed_dim: 384
+  pretrained: true
+
+  # Cross-Instance Attention
+  cia:
+    num_layers: 2
+    num_heads: 6
+    ff_dim: 1536
+    dropout: 0.1
+
+  # JEPA Predictor
+  predictor:
+    num_layers: 2
+    num_heads: 6
+    ff_dim: 1536
+    dropout: 0.1
+
+  # Energy Head
+  energy:
+    hidden_dim: 128
+
+  # Attention Pooling
+  attention_pooling:
+    attn_dim: 128

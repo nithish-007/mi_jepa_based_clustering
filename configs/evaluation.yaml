@@ -1,0 +1,23 @@
+# Evaluation configuration
+data:
+  meta_csv: "dataset/meta_100.csv"
+  img_size: 224
+  batch_size: 128
+  num_workers: 4
+  split: "test"
+
+model:
+  checkpoint: checkpoints/mi_jepa/mi-jepa-epoch=099-train/loss=0.3690.ckpt   # MI-JEPA checkpoint path; null = pretrained baseline
+  name: "vit_small_patch16_224"
+  embed_dim: 384
+
+output:
+  output_dir: "results/eval"
+  run_name: "baseline"
+
+visualization:
+  plot_tsne: true
+  save_cluster_images: true
+  cluster_images_dir: "results/clusters"
+  images_per_cluster: 16    # max images to show per cluster
+  grid_cols: 4              # columns in the image grid

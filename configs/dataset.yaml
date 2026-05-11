@@ -1,0 +1,23 @@
+# Dataset preparation configuration
+dataset:
+  # Source directory (RP2K train dir with class subdirectories)
+  train_dir: "dataset/rp2k_dataset/train"
+
+  # Output paths
+  meta_csv: "dataset/meta_100.csv"
+  class_mapping_csv: "dataset/class_mapping.csv"
+  dataset_100_dir: "dataset/dataset_100"   # copy selected classes here
+
+  # Class selection
+  num_classes: 100
+  min_images: 100
+  max_images: 300
+  cap_per_class: 100
+
+  # Split ratios
+  train_ratio: 0.70
+  val_ratio: 0.15
+  # test_ratio = 1 - train_ratio - val_ratio = 0.15
+
+  # Reproducibility
+  seed: 42

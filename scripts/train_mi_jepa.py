@@ -58,10 +58,9 @@ def main():
         pin_memory=True,
         collate_fn=dual_bag_collate_fn,
         persistent_workers=data_cfg["num_workers"] > 0,
-        drop_last=True,
     )
-    train_loader = DataLoader(train_dataset, shuffle=True, **loader_kwargs)
-    val_loader = DataLoader(val_dataset, shuffle=False, **loader_kwargs)
+    train_loader = DataLoader(train_dataset, shuffle=True, drop_last=True, **loader_kwargs)
+    val_loader = DataLoader(val_dataset, shuffle=False, drop_last=False, **loader_kwargs)
 
     # --- Model ---
     model = MIJEPAModule(

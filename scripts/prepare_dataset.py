@@ -108,7 +108,7 @@ def main():
             else:
                 split = "test"
             split_stats[split] += 1
-            rows.append([str(img_path), class_name, class_id, split])
+            rows.append([img_path.as_posix(), class_name, class_id, split])
 
     # Statistics
     totals  = [v["total"]  for v in per_class_counts.values()]

@@ -22,8 +22,7 @@ class MIJEPAModule(pl.LightningModule):
     """
     Dual-stream MI-JEPA Lightning module.
 
-    Phase 1: L = λ₁(L_JEPA^inter + L_JEPA^intra) + λ₃ L_reg
-    Phase 2: L = λ₁(L_JEPA^inter + L_JEPA^intra) + λ₂ L_energy + λ₃ L_reg
+    L = λ₁(L_JEPA^inter + L_JEPA^intra) + λ₂ L_energy + λ₃ L_reg
 
     Args:
         embed_dim: ViT embedding dimension.
@@ -40,7 +39,7 @@ class MIJEPAModule(pl.LightningModule):
         max_epochs: Total training epochs.
         base_momentum: Starting EMA momentum.
         lambda_jepa: Weight for JEPA loss (λ₁).
-        lambda_energy: Weight for energy loss (λ₂). Set 0 for Phase 1.
+        lambda_energy: Weight for energy loss (λ₂).
         lambda_reg: Weight for VICReg loss (λ₃).
         energy_margin_low: Low margin for energy loss.
         energy_margin_high: High margin for energy loss.
@@ -201,21 +200,14 @@ class MIJEPAModule(pl.LightningModule):
         ], dim=0)
         reg_total, reg_var, reg_cov = self.vicreg_loss(all_z)
 
-        # --- Total loss (Phase 1: no energy) ---
+        # --- Total loss ---
         loss = self.lambda_jepa * jepa_total + self.lambda_reg * reg_total
 
-        # --- Energy loss (Phase 2: λ_energy > 0) ---
-        if self.lambda_energy > 0:
-            e_inter = self._compute_energy(z_inter)
-            e_intra = self._compute_energy(z_intra)
-            energy_total, energy_pos, energy_neg = self.energy_loss(e_intra, e_inter)
-            loss = loss + self.lambda_energy * energy_total
-
-            self.log("train/energy_total", energy_total)
-            self.log("train/energy_pos", energy_pos)
-            self.log("train/energy_neg", energy_neg)
-            self.log("train/energy_intra_mean", e_intra.mean())
-            self.log("train/energy_inter_mean", e_inter.mean())
+        # --- Energy loss ---
+        e_inter = self._compute_energy(z_inter)
+        e_intra = self._compute_energy(z_intra)
+        energy_total, energy_pos, energy_neg = self.energy_loss(e_intra, e_inter)
+        loss = loss + self.lambda_energy * energy_total
 
         # --- EMA update ---
         self.target_encoder.update(self.context_encoder)
@@ -228,6 +220,11 @@ class MIJEPAModule(pl.LightningModule):
         self.log("train/reg_total", reg_total)
         self.log("train/reg_var", reg_var)
         self.log("train/reg_cov", reg_cov)
+        self.log("train/energy_total", energy_total)
+        self.log("train/energy_pos", energy_pos)
+        self.log("train/energy_neg", energy_neg)
+        self.log("train/energy_intra_mean", e_intra.mean())
+        self.log("train/energy_inter_mean", e_inter.mean())
 
         return loss
 
@@ -258,14 +255,14 @@ class MIJEPAModule(pl.LightningModule):
 
         loss = self.lambda_jepa * jepa_total + self.lambda_reg * reg_total
 
-        if self.lambda_energy > 0:
-            e_inter = self._compute_energy(z_inter)
-            e_intra = self._compute_energy(z_intra)
-            energy_total, _, _ = self.energy_loss(e_intra, e_inter)
-            loss = loss + self.lambda_energy * energy_total
+        e_inter = self._compute_energy(z_inter)
+        e_intra = self._compute_energy(z_intra)
+        energy_total, _, _ = self.energy_loss(e_intra, e_inter)
+        loss = loss + self.lambda_energy * energy_total
 
         self.log("val/loss", loss, prog_bar=True, sync_dist=True)
         self.log("val/jepa_total", jepa_total, sync_dist=True)
+        self.log("val/energy_total", energy_total, sync_dist=True)
         return loss
 
     def on_train_batch_end(self, outputs, batch, batch_idx):

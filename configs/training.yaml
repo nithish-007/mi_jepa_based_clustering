@@ -28,8 +28,8 @@ training:
 
 loss:
   lambda_jepa: 1.0
-  lambda_energy: 0.0     # Phase 1: 0.0, Phase 2: 0.5
-  lambda_reg: 0.1
+  lambda_energy: 0.5
+  lambda_reg: 0.25
   energy_margin_low: 0.5
   energy_margin_high: 2.0
 
@@ -48,5 +48,5 @@ checkpoint:
 
 mlflow:
   experiment_name: "mi-jepa"
-  run_name: "mi-jepa-phase1"
-  tracking_uri: "mlruns"   # local directory
+  run_name: "mi-jepa-full"
+  tracking_uri: "sqlite:///mlflow.db"   # local SQLite database

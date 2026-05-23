@@ -7,7 +7,7 @@ data:
   split: "test"
 
 model:
-  checkpoint: checkpoints/mi_jepa/mi-jepa-epoch=099-train/loss=0.3690.ckpt   # MI-JEPA checkpoint path; null = pretrained baseline
+  checkpoint: checkpoints/mi_jepa/mi-jepa-epoch=099-val/loss=0.1908.ckpt   # MI-JEPA checkpoint path; null = pretrained baseline
   name: "vit_small_patch16_224"
   embed_dim: 384
 

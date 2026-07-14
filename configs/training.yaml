@@ -1,10 +1,24 @@
-# Model + Training configuration
+# MI-JEPA on RPC — Track B configuration
+#
+# Uses RPC checkout images natively as multi-instance bags:
+#   - inter-bag = K different-category bboxes cropped from one checkout image
+#   - intra-bag = K single-product (train2019) images of the same category
+#
+# Backbone stays ViT-Small @224 because RPC source images are HD and bbox
+# crops have median min-side 290px (no upscaling artefacts).
+
 data:
-  meta_csv: "dataset/meta_100.csv"
+  # Pre-extracted bbox crops (see scripts/track_b_rpc/preprocess_crops.py).
+  # Training reads small JPEGs (~20 KB) instead of cropping HD source images
+  # at every step, restoring throughput from ~0.13 it/s to ~1+ it/s.
+  manifest_csv: "dataset/rpc_crops_manifest.csv"
+  inter_split: "test"        # 24k checkout images
+  intra_split: "train"       # 53k single-product images
+  val_inter_split: "val"     # 6k checkout images held out for val
   img_size: 224
   bag_size: 4
-  batch_size: 32
-  num_workers: 4
+  batch_size: 16
+  num_workers: 8           # raised from 4 since cached crops are IO-friendly
 
 model:
   name: "vit_small_patch16_224"
@@ -16,10 +30,10 @@ model:
   pred_layers: 2
 
 training:
-  max_epochs: 100
+  max_epochs: 60
   lr: 1.5e-4
   weight_decay: 0.05
-  warmup_epochs: 10
+  warmup_epochs: 5
   base_momentum: 0.996
   fp16: true
   accum_grad: 1
@@ -36,17 +50,17 @@ loss:
 early_stopping:
   enabled: true
   monitor: "val/loss"
-  patience: 15
+  patience: 10
   mode: "min"
 
 checkpoint:
-  dirpath: "checkpoints/mi_jepa"
+  dirpath: "checkpoints/mi_jepa_rpc"
   save_top_k: 3
   monitor: "val/loss"
   mode: "min"
-  save_every: 20
+  save_every: 5
 
 mlflow:
   experiment_name: "mi-jepa"
-  run_name: "mi-jepa-full"
-  tracking_uri: "sqlite:///mlflow.db"   # local SQLite database
+  run_name: "track_b_rpc"
+  tracking_uri: "sqlite:///mlflow.db"

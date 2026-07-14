@@ -47,7 +47,7 @@ class MIJEPAModule(pl.LightningModule):
 
     def __init__(
         self,
-        embed_dim: int = 384,
+        embed_dim: int | None = 384,
         model_name: str = "vit_small_patch16_224",
         pretrained: bool = True,
         bag_size: int = 4,
@@ -74,7 +74,12 @@ class MIJEPAModule(pl.LightningModule):
         self.num_visible = bag_size - self.num_masked
 
         # --- Model components ---
+        # Backbone first — its `embed_dim` drives every downstream module so a
+        # CLI/YAML mismatch can't desync the architecture.
         self.context_encoder = ContextEncoder(model_name, embed_dim, pretrained)
+        embed_dim = self.context_encoder.embed_dim
+        self.embed_dim = embed_dim
+
         self.target_encoder = TargetEncoder(self.context_encoder, base_momentum)
         self.cia = CrossInstanceAttention(
             embed_dim, cia_heads, cia_layers, ff_dim=embed_dim * 4

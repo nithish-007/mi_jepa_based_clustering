@@ -1,11 +1,13 @@
 """
-Train MI-JEPA (dual-stream) on the curated RP2K-100 dataset.
-Config-driven via configs/training.yaml.
+Train MI-JEPA on RPC checkout images as native multi-instance bags.
+
+Reads pre-extracted bbox crops via `dataset/rpc_crops_manifest.csv` (see
+`scripts/preprocess_crops.py`). Config-driven via `configs/training.yaml`.
 """
 from pathlib import Path
+import sys
 
 import pytorch_lightning as pl
-import torch
 import yaml
 from pytorch_lightning.callbacks import (
     EarlyStopping,
@@ -15,10 +17,8 @@ from pytorch_lightning.callbacks import (
 from pytorch_lightning.loggers import MLFlowLogger
 from torch.utils.data import DataLoader
 
-import sys
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from src.data.bag_dataset import DualBagDataset, dual_bag_collate_fn
-from src.data.rp2k_dataset import RP2KDataset
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from src.data.rpc_cached_dataset import RPCCachedDualBagDataset, dual_bag_collate_fn
 from src.data.transforms import get_ssl_transform
 from src.models.mi_jepa import MIJEPAModule
 
@@ -29,7 +29,16 @@ def load_config(path: str = "configs/training.yaml") -> dict:
 
 
 def main():
-    cfg = load_config()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default="configs/training.yaml")
+    parser.add_argument("--fast_dev", action="store_true",
+                        help="Run a 5-step pl.Trainer fast-dev for smoke testing.")
+    parser.add_argument("--max_epochs", type=int, default=None,
+                        help="Override training.max_epochs for short runs.")
+    args = parser.parse_args()
+
+    cfg = load_config(args.config)
     data_cfg = cfg["data"]
     model_cfg = cfg["model"]
     train_cfg = cfg["training"]
@@ -38,19 +47,36 @@ def main():
     ckpt_cfg = cfg["checkpoint"]
     mlflow_cfg = cfg["mlflow"]
 
+    if args.max_epochs is not None:
+        train_cfg["max_epochs"] = args.max_epochs
+
     pl.seed_everything(train_cfg["seed"])
 
-    # --- Datasets ---
+    # --- Datasets (cached crops) ---
+    manifest = data_cfg["manifest_csv"]
+    if not Path(manifest).exists():
+        raise FileNotFoundError(
+            f"Manifest not found at {manifest!r}. Run "
+            "`python scripts/preprocess_crops.py` first."
+        )
     transform = get_ssl_transform(data_cfg["img_size"])
-
-    train_base = RP2KDataset(meta_csv=data_cfg["meta_csv"], split="train", transform=transform)
-    val_base = RP2KDataset(meta_csv=data_cfg["meta_csv"], split="val", transform=transform)
-
-    print(f"Train: {len(train_base)} images, {train_base.num_classes} classes")
-    print(f"Val  : {len(val_base)} images, {val_base.num_classes} classes")
-
-    train_dataset = DualBagDataset(train_base, bag_size=data_cfg["bag_size"])
-    val_dataset = DualBagDataset(val_base, bag_size=data_cfg["bag_size"])
+    train_dataset = RPCCachedDualBagDataset(
+        manifest,
+        bag_size=data_cfg["bag_size"],
+        transform=transform,
+        inter_split=data_cfg["inter_split"],
+        intra_split=data_cfg["intra_split"],
+    )
+    val_dataset = RPCCachedDualBagDataset(
+        manifest,
+        bag_size=data_cfg["bag_size"],
+        transform=transform,
+        inter_split=data_cfg["val_inter_split"],
+        intra_split=data_cfg["intra_split"],
+    )
+    print(f"RPC: {train_dataset.num_categories} categories")
+    print(f"Train bags (inter src): {len(train_dataset)}")
+    print(f"Val   bags (inter src): {len(val_dataset)}")
 
     loader_kwargs = dict(
         batch_size=data_cfg["batch_size"],
@@ -84,11 +110,10 @@ def main():
         energy_margin_high=loss_cfg["energy_margin_high"],
     )
 
-    # --- Callbacks ---
     callbacks = [
         ModelCheckpoint(
             dirpath=ckpt_cfg["dirpath"],
-            filename="mi-jepa-{epoch:03d}-{val/loss:.4f}",
+            filename="mi-jepa-rpc-{epoch:03d}-{val/loss:.4f}",
             save_top_k=ckpt_cfg["save_top_k"],
             monitor=ckpt_cfg["monitor"],
             mode=ckpt_cfg["mode"],
@@ -97,7 +122,6 @@ def main():
         ),
         LearningRateMonitor(logging_interval="step"),
     ]
-
     if es_cfg["enabled"]:
         callbacks.append(
             EarlyStopping(
@@ -108,7 +132,6 @@ def main():
             )
         )
 
-    # --- MLflow Logger ---
     logger = MLFlowLogger(
         experiment_name=mlflow_cfg["experiment_name"],
         run_name=mlflow_cfg["run_name"],
@@ -116,7 +139,6 @@ def main():
         log_model=False,
     )
 
-    # --- Trainer ---
     trainer = pl.Trainer(
         max_epochs=train_cfg["max_epochs"],
         accelerator="auto",
@@ -128,6 +150,7 @@ def main():
         gradient_clip_val=train_cfg["gradient_clip_val"],
         accumulate_grad_batches=train_cfg["accum_grad"],
         deterministic=False,
+        fast_dev_run=5 if args.fast_dev else False,
     )
 
     trainer.fit(model, train_loader, val_loader)

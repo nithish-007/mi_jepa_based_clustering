@@ -1,23 +1,20 @@
-# Evaluation configuration
+# Evaluation configuration for Track B (MI-JEPA on RPC)
 data:
-  meta_csv: "dataset/meta_100.csv"
+  manifest_csv: "dataset/rpc_crops_manifest.csv"
+  split: "test"               # test2019 - 24k checkout images, 294k bbox crops
+  samples_per_class: 30       # 200 cats * 30 = 6000 crops for K-Means
   img_size: 224
   batch_size: 128
   num_workers: 4
-  split: "test"
 
 model:
-  checkpoint: checkpoints/mi_jepa/mi-jepa-epoch=099-val/loss=0.1908.ckpt   # MI-JEPA checkpoint path; null = pretrained baseline
+  checkpoint: null            # set to the Track B .ckpt after training
   name: "vit_small_patch16_224"
   embed_dim: 384
 
 output:
-  output_dir: "results/eval"
-  run_name: "baseline"
+  output_dir: "results/eval_track_b"
+  run_name: "track_b_rpc"
 
 visualization:
   plot_tsne: true
-  save_cluster_images: true
-  cluster_images_dir: "results/clusters"
-  images_per_cluster: 16    # max images to show per cluster
-  grid_cols: 4              # columns in the image grid

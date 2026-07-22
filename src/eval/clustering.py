@@ -29,7 +29,8 @@ def extract_features(
     all_labels = []
 
     for batch in tqdm(dataloader, desc="Extracting features"):
-        images, class_ids, _ = batch
+        # Eval datasets may yield (image, label) or (image, label, index).
+        images, class_ids = batch[0], batch[1]
         images = images.to(device)
         features = model(images)
         all_features.append(features.cpu().numpy())

@@ -8,8 +8,8 @@ dataset/
 mlruns/
 mlflow.db
 
-# repots
-reports/
+# academic reports (generated docx)
+records/reports/
 
 # Outputs
 checkpoints/

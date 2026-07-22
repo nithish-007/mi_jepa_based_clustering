@@ -7,6 +7,10 @@ dataset.zip
 
 retail_product_checkout/
 
+# mlflow
+mlruns/
+mlflow.db
+
 # repots
 reports/
 

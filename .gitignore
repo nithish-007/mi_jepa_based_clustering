@@ -1,11 +1,8 @@
 # Data
-dataset/dataset_100/
-dataset/rp2k_dataset/
-dataset/meta.csv
 archive.zip
 dataset.zip
-
 retail_product_checkout/
+dataset/
 
 # mlflow
 mlruns/

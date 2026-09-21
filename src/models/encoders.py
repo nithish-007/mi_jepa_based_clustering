@@ -7,11 +7,11 @@ output dimension is read directly from the timm model's `num_features` attribute
 so callers don't have to keep the YAML `embed_dim` in sync with the backbone.
 """
 import copy
-import math
 
 import torch
 import torch.nn as nn
 import timm
+from lightly.models.utils import deactivate_requires_grad, update_momentum
 
 
 class ContextEncoder(nn.Module):
@@ -86,36 +86,16 @@ class TargetEncoder(nn.Module):
         self.embed_dim = context_encoder.embed_dim
         self.momentum = initial_momentum
 
-        # Freeze parameters — updated only via EMA
-        for p in self.backbone.parameters():
-            p.requires_grad = False
+        # Frozen — updated only via EMA, never by the optimizer.
+        deactivate_requires_grad(self.backbone)
 
     @torch.no_grad()
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.backbone(x)
 
-    @torch.no_grad()
     def update(self, context_encoder: ContextEncoder):
         """EMA update from the context encoder."""
-        for p_target, p_online in zip(
-            self.backbone.parameters(), context_encoder.backbone.parameters()
-        ):
-            p_target.data.mul_(self.momentum).add_(
-                p_online.data, alpha=1.0 - self.momentum
-            )
+        update_momentum(context_encoder.backbone, self.backbone, m=self.momentum)
 
     def set_momentum(self, momentum: float):
         self.momentum = momentum
-
-
-def cosine_momentum_schedule(
-    base_momentum: float, total_steps: int
-) -> list[float]:
-    """
-    Cosine schedule for EMA momentum: base_momentum → 1.0.
-    Returns a list of momentum values, one per step.
-    """
-    return [
-        1.0 - (1.0 - base_momentum) * (math.cos(math.pi * t / total_steps) + 1) / 2
-        for t in range(total_steps)
-    ]

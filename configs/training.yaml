@@ -8,7 +8,7 @@
 # crops have median min-side 290px (no upscaling artefacts).
 
 data:
-  # Pre-extracted bbox crops (see scripts/track_b_rpc/preprocess_crops.py).
+  # Pre-extracted bbox crops (see scripts/preprocess_crops.py).
   # Training reads small JPEGs (~20 KB) instead of cropping HD source images
   # at every step, restoring throughput from ~0.13 it/s to ~1+ it/s.
   manifest_csv: "dataset/rpc_crops_manifest.csv"

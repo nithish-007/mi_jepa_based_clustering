@@ -6,9 +6,10 @@ import math
 
 import torch
 import torch.nn as nn
-import pytorch_lightning as pl
+import lightning.pytorch as pl
+from lightly.utils.scheduler import cosine_schedule
 
-from src.models.encoders import ContextEncoder, TargetEncoder, cosine_momentum_schedule
+from src.models.encoders import ContextEncoder, TargetEncoder
 from src.models.cross_instance_attention import CrossInstanceAttention
 from src.models.jepa_predictor import JEPAPredictor
 from src.models.energy_head import EnergyHead
@@ -271,14 +272,15 @@ class MIJEPAModule(pl.LightningModule):
         return loss
 
     def on_train_batch_end(self, outputs, batch, batch_idx):
-        """Update EMA momentum via cosine schedule."""
-        total_steps = self.trainer.estimated_stepping_batches
-        current_step = self.global_step
-        progress = current_step / max(total_steps, 1)
-        new_momentum = 1.0 - (1.0 - self.base_momentum) * (
-            math.cos(math.pi * progress) + 1
-        ) / 2
-        self.target_encoder.set_momentum(new_momentum)
+        """Ramp EMA momentum base_momentum -> 1.0 on a cosine schedule."""
+        self.target_encoder.set_momentum(
+            cosine_schedule(
+                step=self.global_step,
+                max_steps=max(self.trainer.estimated_stepping_batches, 1),
+                start_value=self.base_momentum,
+                end_value=1.0,
+            )
+        )
 
     def configure_optimizers(self):
         # Only optimize online encoder, CIA, predictor, energy head, attn pooling

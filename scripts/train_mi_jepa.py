@@ -7,20 +7,36 @@ Reads pre-extracted bbox crops via `dataset/rpc_crops_manifest.csv` (see
 from pathlib import Path
 import sys
 
-import pytorch_lightning as pl
+import lightning.pytorch as pl
+import torch
 import yaml
-from pytorch_lightning.callbacks import (
+from lightning.pytorch.callbacks import (
     EarlyStopping,
     LearningRateMonitor,
     ModelCheckpoint,
 )
-from pytorch_lightning.loggers import MLFlowLogger
+from lightning.pytorch.loggers import MLFlowLogger
+from lightning.pytorch.plugins.io import TorchCheckpointIO
 from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.data.rpc_cached_dataset import RPCCachedDualBagDataset, dual_bag_collate_fn
 from src.data.transforms import get_ssl_transform
 from src.models.mi_jepa import MIJEPAModule
+
+
+class DirectTorchCheckpointIO(TorchCheckpointIO):
+    """Write checkpoints straight to disk instead of via an in-memory buffer.
+
+    Lightning's default `_atomic_save` serialises into `io.BytesIO` first, which
+    trips torch's zip-writer alignment check on a checkpoint this size
+    ("RuntimeError: unexpected pos N vs M"). Saving to the path directly uses
+    torch's file writer and also avoids a full extra copy in RAM.
+    """
+
+    def save_checkpoint(self, checkpoint, path, storage_options=None):
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        torch.save(checkpoint, path)
 
 
 def load_config(path: str = "configs/training.yaml") -> dict:
@@ -110,16 +126,36 @@ def main():
         energy_margin_high=loss_cfg["energy_margin_high"],
     )
 
+    # Top-K rolling checkpoints (+ last.ckpt), gated by save_every epochs.
+    # NOTE: auto_insert_metric_name=False + no '/' in the template. The monitored
+    # metric name is "val/loss"; if the '/' reached the filename, Lightning would
+    # create a subfolder per checkpoint and leave empty folders behind on rotation.
+    topk_ckpt = ModelCheckpoint(
+        dirpath=ckpt_cfg["dirpath"],
+        filename="mi-jepa-rpc-epoch{epoch:03d}-loss{val/loss:.4f}",
+        auto_insert_metric_name=False,
+        save_top_k=ckpt_cfg["save_top_k"],
+        monitor=ckpt_cfg["monitor"],
+        mode=ckpt_cfg["mode"],
+        every_n_epochs=ckpt_cfg["save_every"],
+        save_last=True,
+    )
+    # Single always-current best checkpoint, e.g. `best_loss_0.1234.ckpt`.
+    # save_top_k=1 makes Lightning delete the previous best and write the new
+    # one whenever val/loss improves, so the best model is unambiguous. Checked
+    # every validation epoch (no every_n_epochs) so it's the true global best.
+    best_ckpt = ModelCheckpoint(
+        dirpath=ckpt_cfg["dirpath"],
+        filename="best_loss_{val/loss:.4f}",
+        auto_insert_metric_name=False,
+        save_top_k=1,
+        monitor=ckpt_cfg["monitor"],
+        mode=ckpt_cfg["mode"],
+        save_last=False,
+    )
     callbacks = [
-        ModelCheckpoint(
-            dirpath=ckpt_cfg["dirpath"],
-            filename="mi-jepa-rpc-{epoch:03d}-{val/loss:.4f}",
-            save_top_k=ckpt_cfg["save_top_k"],
-            monitor=ckpt_cfg["monitor"],
-            mode=ckpt_cfg["mode"],
-            every_n_epochs=ckpt_cfg["save_every"],
-            save_last=True,
-        ),
+        topk_ckpt,
+        best_ckpt,
         LearningRateMonitor(logging_interval="step"),
     ]
     if es_cfg["enabled"]:
@@ -146,6 +182,7 @@ def main():
         precision="16-mixed" if train_cfg["fp16"] else "32-true",
         callbacks=callbacks,
         logger=logger,
+        plugins=[DirectTorchCheckpointIO()],
         log_every_n_steps=10,
         gradient_clip_val=train_cfg["gradient_clip_val"],
         accumulate_grad_batches=train_cfg["accum_grad"],
@@ -154,7 +191,10 @@ def main():
     )
 
     trainer.fit(model, train_loader, val_loader)
-    print(f"Training complete. Best checkpoint: {callbacks[0].best_model_path}")
+    print("Training complete.")
+    print(f"  Best checkpoint: {best_ckpt.best_model_path}")
+    print(f"  Best {ckpt_cfg['monitor']}: {best_ckpt.best_model_score}")
+    print(f"  Top-{ckpt_cfg['save_top_k']} + last saved in: {ckpt_cfg['dirpath']}")
 
 
 if __name__ == "__main__":

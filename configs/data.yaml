@@ -1,0 +1,19 @@
+# Builds the SKU-disjoint manifest once:  python scripts/prepare_data.py
+# Output: data/splits/rp2k/manifest.csv and data/splits/rp2k/summary.json
+
+seed: 0
+raw_root: data/raw/rp2k            # contains all/train/<sku>/ and all/test/<sku>/
+output_dir: data/splits/rp2k
+
+# "others" is a catch-all folder of unrelated products, not one SKU.
+exclude_sku_ids:
+  - others
+image_extensions: [.jpg, .jpeg, .png, .bmp, .webp]
+
+validate_images: true              # drop files PIL cannot decode
+drop_duplicate_bytes: true         # drop byte-identical copies (they would leak across splits)
+
+# Fractions of SKUs (not images). Test gets the remainder.
+split_fractions:
+  train: 0.70
+  val: 0.15

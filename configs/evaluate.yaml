@@ -1,0 +1,67 @@
+# Test-set evaluation:  python scripts/evaluate.py
+# Calibration (pair-score weights and merge threshold) uses the val split only.
+# Output: results/evaluation_<model>/ and results/evaluation_summary.csv, plus an MLflow run per model.
+
+seed: 0
+device: auto
+output_dir: results
+checkpoint_root: checkpoints       # trained models live in checkpoints/<name>/
+
+data:
+  root: data/raw/rp2k
+  manifest: data/splits/rp2k/manifest.csv
+
+models:
+  - name: ijepa_ebm_vits14         # = experiment.name in train.yaml
+    checkpoint: best               # best | last | <path to .ckpt>
+  - name: dinov2_vits14_frozen     # baseline: pretrained backbone, no training, no energy head
+    checkpoint: null
+    backbone:
+      name: vit_small_patch14_dinov2.lvd142m
+      checkpoint: ~/.cache/torch/hub/checkpoints/dinov2_vits14_pretrain.pth
+      pretrained: true
+      pooling: cls
+    data:
+      image_size: 196
+      resize: pad
+
+methods:
+  - graph                          # cosine + energy (needs the discrimination head)
+  - graph_cosine                   # ablation: cosine only
+  - hdbscan
+  - kmeans_oracle                  # diagnostic: is given the true number of products
+
+calibration:
+  split: val
+  max_skus: null
+  max_images_per_sku: 10
+
+corpora:                           # nested subsets of the test split
+  - {name: test_20, split: test, max_skus: 20, max_images_per_sku: null}
+  - {name: test_100, split: test, max_skus: 100, max_images_per_sku: null}
+  - {name: test_250, split: test, max_skus: 250, max_images_per_sku: null}
+  - {name: test_all, split: test, max_skus: null, max_images_per_sku: 20}
+
+clustering:
+  k_neighbors: 10
+  mutual: false
+  linkage_check: average
+  max_check_pairs: 32
+  threshold_grid: [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+  hdbscan:
+    min_cluster_size: 2
+    min_samples: null
+    pca_dim: 64
+  max_images_per_method:           # skip slow methods on large corpora
+    hdbscan: 30000
+    kmeans_oracle: 30000
+
+embedding:
+  batch_size: 128
+  num_workers: 4
+save_embeddings: true              # test_embeddings.npz, used by the analysis notebook
+
+mlflow:
+  enabled: true
+  experiment: rp2k-product-clustering
+  tracking_uri: sqlite:///mlflow.db

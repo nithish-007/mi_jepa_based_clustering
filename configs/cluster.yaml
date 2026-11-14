@@ -1,0 +1,49 @@
+# Group images into folders without knowing the number of products:
+#   python scripts/cluster.py
+# Output: results/cluster_<model name>/1, 2, 3, ... (largest cluster first),
+#         unassigned/ for images that matched nothing, assignments.csv, summary.json
+
+seed: 0
+device: auto
+checkpoint_root: checkpoints
+
+model:
+  name: ijepa_ebm_vits14           # = experiment.name in train.yaml
+  checkpoint: best                 # best | last | <path to .ckpt>
+
+input:
+  image_dir: null                  # any folder of images (searched recursively); no labels needed
+  # Used when image_dir is null: a manifest subset, scored against SKU ids as a sanity check.
+  manifest: data/splits/rp2k/manifest.csv
+  data_root: data/raw/rp2k
+  split: test
+  max_skus: 20
+  max_images_per_sku: null
+
+method: graph                      # graph | graph_cosine | hdbscan
+# auto: results/evaluation_<model>/calibration.json if present, else the calibration stored in the
+# checkpoint, else fit on the val split now. Or give a path to a calibration.json.
+calibration: auto
+calibration_max_images_per_sku: 10
+score_if_labels: true
+
+clustering:
+  k_neighbors: 10
+  mutual: false
+  linkage_check: average
+  max_check_pairs: 32
+  threshold_grid: [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+  hdbscan:
+    min_cluster_size: 2
+    min_samples: null
+    pca_dim: 64
+
+embedding:
+  batch_size: 128
+  num_workers: 4
+
+export:
+  output_dir: results
+  singletons: unassigned           # unassigned: one shared folder | own_folder: numbered folders after the clusters
+  mode: copy                       # copy | hardlink (same drive, no extra disk space)
+  overwrite: true                  # only ever deletes a folder previously written by this script

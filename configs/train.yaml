@@ -1,0 +1,134 @@
+# Training config for the dual-head I-JEPA + energy model.
+#   python scripts/train.py                          # uses this file
+#   python scripts/train.py trainer.max_epochs=2     # one-off override without editing the file
+# To try a change, edit the value here and keep the old one as a comment next to it.
+# experiment.name is the run identity: checkpoints/<name>/, results/cluster_<name>/,
+# results/evaluation_<name>/, and the MLflow run name.
+
+experiment:
+  name: ijepa_ebm_vits14
+seed: 0
+
+data:
+  root: data/raw/rp2k
+  manifest: data/splits/rp2k/manifest.csv
+  image_size: 196                  # multiple of the patch size (14) -> 14 x 14 patch grid
+  resize: pad                      # pad: keep aspect ratio | stretch
+  num_workers: 4                   # training loader processes (each one costs RAM on Windows)
+  max_train_skus: null             # null = all train SKUs
+  augmentation:
+    crop_scale: [0.6, 1.0]
+    crop_ratio: [0.8, 1.25]
+    rotation_degrees: 10
+    horizontal_flip_prob: 0.0      # mirrored text is not the same product view
+    color_jitter: {brightness: 0.3, contrast: 0.3, saturation: 0.2, hue: 0.0}   # hue changes flavour colours
+    color_jitter_prob: 0.8
+    grayscale_prob: 0.0
+    blur_prob: 0.1
+  sampler:
+    products_per_batch: 16         # P
+    images_per_product: 4          # K  -> batch = P x K
+    batches_per_epoch: 1000        # null = one pass over all train images per epoch
+    same_family_prob: 0.25         # chance to add a size/flavour sibling as a hard negative
+  validation:
+    max_skus: null                 # null = all validation SKUs
+    max_images_per_sku: 10
+    batch_size: 128
+    num_workers: 2                 # kept alive next to the training workers; 0 = load in the main process
+
+model:
+  backbone:
+    name: vit_small_patch14_dinov2.lvd142m
+    checkpoint: ~/.cache/torch/hub/checkpoints/dinov2_vits14_pretrain.pth   # null = download from the HF hub
+    pretrained: true
+    trainable_blocks: 4            # ViT-S has 12 blocks: 4 = last 4 trainable, 6 = second half trainable
+    pooling: cls                   # cls | mean
+    grad_checkpointing: false      # true trades speed for memory in the trainable blocks
+    kwargs: {}                     # extra timm.create_model arguments (e.g. drop_path_rate: 0.1)
+
+  ijepa:
+    enabled: true
+    mask:                          # I-JEPA paper defaults
+      num_targets: 4
+      target_scale: [0.15, 0.2]
+      target_aspect_ratio: [0.75, 1.5]
+      context_scale: [0.85, 1.0]
+      min_keep: 10
+    predictor:
+      embed_dim: 192
+      depth: 4                     # number of predictor transformer blocks
+      num_heads: 6
+    ema:                           # target-encoder momentum, linear from start to end over training
+      start: 0.996
+      end: 1.0
+
+  invariance_head:                 # z_inv: SupCon embedding used for kNN
+    hidden_dims: [512]             # one entry per hidden layer, e.g. [1024, 512]
+    out_dim: 128
+    dropout: 0.0
+    detach_input: false            # true stops this head's gradient from reaching the backbone
+
+  discrimination_head:             # z_dis + energy MLP E(z_i, z_j)
+    hidden_dims: [512]
+    out_dim: 128
+    energy_hidden_dims: [256, 64]
+    dropout: 0.0
+    detach_input: false
+
+loss:
+  ijepa:
+    weight: 1.0
+    start_epoch: 0
+  invariance:
+    weight: 1.0
+    start_epoch: 0
+    temperature: 0.1
+  discrimination:
+    weight: 1.0
+    start_epoch: 0
+    margin: 1.0                    # hardest positive must be this much lower in energy than hardest negative
+    ranking_weight: 1.0
+    bce_weight: 1.0
+
+optimizer:
+  backbone_lr: 2.0e-5
+  head_lr: 5.0e-4                  # heads and I-JEPA predictor
+  weight_decay: 0.05
+  betas: [0.9, 0.999]
+  warmup_epochs: 2
+  min_lr_ratio: 0.01               # cosine decay floor, as a fraction of the peak LR
+
+trainer:
+  max_epochs: 100
+  precision: 16-mixed
+  accelerator: gpu                 # gpu fails loudly if CUDA is missing instead of silently using the CPU
+  accumulate_grad_batches: 1
+  gradient_clip_val: 1.0
+  log_every_n_steps: 50
+  limit_train_batches: null        # set e.g. 20 for a smoke test
+  limit_val_batches: null
+
+checkpoint:
+  dir: checkpoints
+  monitor: val/bcubed_f1
+  mode: max
+  save_top_k: 2                    # plus last.ckpt, which is always written
+  resume: auto                     # auto: continue from last.ckpt if it exists | never | <path to .ckpt>
+
+early_stopping:
+  patience: 10
+  min_delta: 0.0
+
+validation:                        # clustering run on the val split after every epoch
+  clustering:
+    k_neighbors: 10
+    mutual: false
+    linkage_check: average         # average: reject merges whose sampled cross pairs score low | single
+    max_check_pairs: 32
+    threshold_grid: [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+
+mlflow:
+  experiment: rp2k-product-clustering
+  tracking_uri: sqlite:///mlflow.db
+  plot_every_n_epochs: 1
+  log_grad_norm_every_n_steps: 50

@@ -1,15 +1,26 @@
-# Data
+# Data (raw images and generated splits)
+data/
 archive.zip
 dataset.zip
 retail_product_checkout/
 dataset/
+*.zip
+
+# Large files kept in the archive
+archive/**/checkpoints/
+archive/**/data/
+archive/duplicates/
+*.ckpt
 
 # mlflow
 mlruns/
 mlflow.db
 
 # academic reports (generated docx)
-records/reports/
+records/
+
+# archive files
+archive/
 
 # Outputs
 checkpoints/

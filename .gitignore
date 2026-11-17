@@ -1,5 +1,5 @@
 # Data (raw images and generated splits)
-data/
+/data/
 archive.zip
 dataset.zip
 retail_product_checkout/
